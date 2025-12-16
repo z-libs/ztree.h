@@ -180,7 +180,7 @@ namespace z_tree {
         static_assert(0 == sizeof(K), "No ztree implementation registered for this Key/Value pair.");
     };
     
-    template <typename K, typename V>
+template <typename K, typename V>
     class map_iterator 
     {
      public:
@@ -192,6 +192,7 @@ namespace z_tree {
 
         using Traits = traits<typename std::remove_const<K>::type, typename std::remove_const<V>::type>;
         using CNode = typename Traits::node_type;
+        using CTree = typename Traits::tree_type;
 
         struct EntryProxy 
         {
@@ -201,11 +202,10 @@ namespace z_tree {
                 return node->key;
             }
 
-            V &value() const 
+            V &value() const
             {
                 return node->value;
             }
-
             const K &first() const
             {
                 return node->key;
@@ -217,36 +217,36 @@ namespace z_tree {
             }
         };
 
-        explicit map_iterator(CNode *p) : current(p) {}
+        explicit map_iterator(CNode *p, const CTree *t) : current(p), tree(t) {}
 
-        const K &key() const 
-        { 
+        const K &key() const
+        {
             return current->key;
         }
 
-        V &value() const 
-        { 
-            return current->value; 
+        V &value() const
+        {
+            return current->value;
         }
 
-        EntryProxy operator*() const 
-        { 
-            return EntryProxy{current}; 
+        EntryProxy operator*() const
+        {
+            return EntryProxy{current};
         }
 
-        V *operator->() const 
-        { 
-            return &current->value; 
+        V *operator->() const
+        {
+            return &current->value;
         }
 
-        bool operator==(const map_iterator &other) const 
-        { 
-            return current == other.current; 
+        bool operator==(const map_iterator &other) const
+        {
+            return current == other.current;
         }
 
-        bool operator!=(const map_iterator &other) const 
-        { 
-            return current != other.current; 
+        bool operator!=(const map_iterator &other) const
+        {
+            return current != other.current;
         }
 
         map_iterator &operator++() 
@@ -255,14 +255,22 @@ namespace z_tree {
             return *this; 
         }
 
-        map_iterator &operator--() 
-        { 
-            current = Traits::prev(current); 
+        map_iterator &operator--()
+        {  
+            if (!current) 
+            {
+                current = Traits::max(const_cast<CTree*>(tree));
+            } 
+            else 
+            {
+                current = Traits::prev(current); 
+            }
             return *this; 
         }
 
      private:
         CNode *current;
+        const CTree *tree;
         friend class map<K, V>;
     };
 
@@ -275,28 +283,28 @@ namespace z_tree {
         using iterator = map_iterator<K, V>;
         CTree inner;
 
-        map() 
-        { 
-            inner = Traits::init(); 
+        map()
+        {
+            inner = Traits::init();
         }
 
-        ~map() 
-        { 
-            Traits::clear(&inner); 
+        ~map()
+        {
+            Traits::clear(&inner);
         }
 
         map(const map&) = delete;
         map &operator=(const map&) = delete;
 
-        map(map &&other) noexcept : inner(other.inner) 
-        { 
-            other.inner = Traits::init(); 
+        map(map &&other) noexcept : inner(other.inner)
+        {
+            other.inner = Traits::init();
         }
 
-        map &operator=(map &&other) noexcept 
+        map &operator=(map &&other) noexcept
         {
-            if (this != &other) 
-            { 
+            if (this != &other)
+            {
                 Traits::clear(&inner); 
                 inner = other.inner; 
                 other.inner = Traits::init(); 
@@ -305,36 +313,35 @@ namespace z_tree {
         }
 
         void insert(K k, V v) 
-        { 
-            if (0 != Traits::insert(&inner, k, v)) 
+        {
+            if (0 != Traits::insert(&inner, k, v))
             {
-                throw std::bad_alloc(); 
+                throw std::bad_alloc();
             }
         }
 
-        void erase(K k) 
-        { 
-            Traits::remove(&inner, k); 
+        void erase(K k)
+        {
+            Traits::remove(&inner, k);
         }
         
-        iterator erase(iterator pos) 
+        iterator erase(iterator pos)
         {
-            iterator next = pos; 
-            ++next;
+            iterator next = pos; ++next;
             Traits::remove(&inner, pos.key());
             return next;
         }
 
-        V *find(K k) 
-        { 
+        V *find(K k)
+        {
             auto *n = Traits::find(&inner, k);
             return n ? &n->value : nullptr; 
         }
         
-        V &operator[](const K &k) 
+        V &operator[](const K &k)
         {
             auto *n = Traits::find(&inner, k);
-            if (!n) 
+            if (!n)
             { 
                 Traits::insert(&inner, k, V{}); 
                 n = Traits::find(&inner, k); 
@@ -342,34 +349,34 @@ namespace z_tree {
             return n->value;
         }
 
-        iterator lower_bound(const K &k) 
-        { 
-            return iterator(Traits::lower_bound(&inner, k)); 
+        iterator lower_bound(const K &k)
+        {
+            return iterator(Traits::lower_bound(&inner, k), &inner);
         }
 
-        iterator begin() 
-        { 
-            return iterator(Traits::min(&inner)); 
+        iterator begin()
+        {
+            return iterator(Traits::min(&inner), &inner);
         }
 
-        iterator end() 
-        { 
-            return iterator(nullptr); 
-        }
-
-        size_t size() const 
-        { 
-            return inner.size; 
+        iterator end()
+        {
+            return iterator(nullptr, &inner);
         }
         
-        bool empty() const 
-        { 
-            return 0 == inner.size; 
+        size_t size() const
+        {
+            return inner.size;
         }
 
-        void clear() 
-        { 
-            Traits::clear(&inner); 
+        bool empty() const
+        {
+            return 0 == inner.size;
+        }
+
+        void clear()
+        {
+            Traits::clear(&inner);
         }
     };
 }
@@ -476,6 +483,7 @@ typedef enum
             y->left->parent = x;                                                                                \
             y->parent = x->parent;                                                                              \
         }                                                                                                       \
+        y->parent = x->parent;                                                                                  \
         if (!x->parent)                                                                                         \
         {                                                                                                       \
             t->root = y;                                                                                        \
@@ -501,6 +509,7 @@ typedef enum
             x->right->parent = y;                                                                               \
             x->parent = y->parent;                                                                              \
         }                                                                                                       \
+        x->parent = y->parent;                                                                                  \
         if (!y->parent)                                                                                         \
         {                                                                                                       \
             t->root = x;                                                                                        \
@@ -966,7 +975,7 @@ Z_ALL_TREES(ZTREE_GENERATE_IMPL)
 } // extern "C"
 namespace z_tree 
 {
-    #define ZTREE_CPP_TRAITS(Key, Val, Name, Cmp)                           \
+#   define ZTREE_CPP_TRAITS(Key, Val, Name, Cmp)                            \
         template<> struct traits<Key, Val>                                  \
         {                                                                   \
             using tree_type = ::ztree_##Name;                               \
@@ -978,6 +987,7 @@ namespace z_tree
             static constexpr auto lower_bound = ::ztree_lower_bound_##Name; \
             static constexpr auto clear = ::ztree_clear_##Name;             \
             static constexpr auto min = ::ztree_min_##Name;                 \
+            static constexpr auto max = ::ztree_max_##Name;                 \
             static constexpr auto next = ::ztree_next_##Name;               \
             static constexpr auto prev = ::ztree_prev_##Name;               \
         };
